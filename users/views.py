@@ -98,9 +98,9 @@ class SignInView(APIView):
                     {
                         "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=3600),
                         "id": user.id,
-                        "user_type": user.user_type,
-                        "email": user.email,
-                        "nickname": user.nickname,
+                        # "user_type": user.user_type,
+                        # "email": user.email,
+                        # "nickname": user.nickname,
                     },
                     SECRET_KEY,
                     algorithm='HS256'
@@ -113,6 +113,43 @@ class SignInView(APIView):
             return Response({"message": "존재하지 않는 email입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class PasswordChangeView(APIView):
+
+    """ password 변경 View """
+    # 비밀번호를 변경했다고해서 토크 만료 시간이 연장되는 것은 아니다.
+
+    @login_validate
+    def post(self, request):
+        user = request.user
+        user_password = user.password  # 현재 로그인한 유저의 암호화된 비밀번호(bytes 타입)
+
+        data = json.loads(request.body)
+
+        # 입력받은 세 가지 password의 길이 검사
+        for key, value in data.items():
+            if len(value) < 6:
+                return Response({"message": "password는 최소 6글자 이상이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        prev_password = data["prev_password"]
+        new_password = data["new_password"]
+        new_password_check = data["new_password_check"]
+
+        if not bcrypt.checkpw(prev_password.encode('utf-8'), user_password):
+            return Response({"message": "현재 password를 다시 확인해 주시기 바랍니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if prev_password == new_password:
+            return Response({"message": "이전과 다른 새로운 password를 입력해야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+        if new_password != new_password_check:
+            return Response({"message": "새로 입력한 password가 일치하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_password = bcrypt.hashpw(
+            new_password.encode('utf-8'), bcrypt.gensalt())
+
+        user.password = new_password
+        user.save()
+
+        return Response({"message": "password를 변경했습니다."}, status=status.HTTP_201_CREATED)
+
+
 class TestView(APIView):
 
     """ 테스트 용 View """
@@ -120,8 +157,15 @@ class TestView(APIView):
     @login_validate
     def post(self, request):
 
+        encode_token = request.headers["Authorization"].split()[1]
+        payload = jwt.decode(encode_token, SECRET_KEY, algorithms='HS256')
+
         print(request)
         print(request.headers)
         print(request.user)
 
+        result = bcrypt.checkpw('01062189200'.encode(
+            "utf-8"), request.user.password)
+        print(result)
+        print(payload['exp'])
         return Response({"message": "당신은 로그인 유저입니다."}, status=status.HTTP_200_OK)

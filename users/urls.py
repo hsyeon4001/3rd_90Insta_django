@@ -8,6 +8,7 @@ from users.views import *
 urlpatterns = [
     path('sign-up/', SignUpView.as_view()),
     path('sign-in/', SignInView.as_view()),
+    path('password-change/', PasswordChangeView.as_view()),
     path('test/', TestView.as_view()),
 ]
 
