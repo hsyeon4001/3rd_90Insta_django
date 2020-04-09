@@ -20,6 +20,9 @@ class User(models.Model):
                 fields=['user_type', 'email'], name="UNIQUE OF USER")
         ]
 
+    def __str__(self):
+        return self.nickname
+
     @classmethod
     def truncate(cls):
         with connection.cursor() as cursor:

@@ -6,6 +6,7 @@
 import jwt
 import json
 import bcrypt
+import datetime
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -15,6 +16,7 @@ from django.http import HttpResponse
 from django.db import IntegrityError
 from users.models import User, UserProfile
 from config.settings import SECRET_KEY
+from config.authentication import login_validate
 
 
 class SignUpView(APIView):
@@ -69,10 +71,11 @@ class SignUpView(APIView):
 class SignInView(APIView):
 
     """ 일반 회원 로그인"""
+    # ToDo: 추후에 이메일 인증 기능이 완성되면, 본 회원이 인증 완료(auth=True)인지 판단해야함
 
     def post(self, request):
         data = json.loads(request.body)
-
+        print(request.headers)
         input_email = data['email']
         input_password = data['password']
 
@@ -90,10 +93,15 @@ class SignInView(APIView):
             )
 
             if password_check:
-                print(SECRET_KEY)
 
                 token = jwt.encode(
-                    {"user": user.id},
+                    {
+                        "exp": datetime.datetime.utcnow() + datetime.timedelta(seconds=3600),
+                        "id": user.id,
+                        "user_type": user.user_type,
+                        "email": user.email,
+                        "nickname": user.nickname,
+                    },
                     SECRET_KEY,
                     algorithm='HS256'
                 )
@@ -103,3 +111,17 @@ class SignInView(APIView):
                 return Response({"message": "password가 일치하지 않습니다."}, status=status.HTTP_400_BAD_REQUEST)
         else:
             return Response({"message": "존재하지 않는 email입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TestView(APIView):
+
+    """ 테스트 용 View """
+
+    @login_validate
+    def post(self, request):
+
+        print(request)
+        print(request.headers)
+        print(request.user)
+
+        return Response({"message": "당신은 로그인 유저입니다."}, status=status.HTTP_200_OK)
