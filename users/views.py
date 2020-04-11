@@ -16,7 +16,12 @@ from django.http import HttpResponse
 from django.db import IntegrityError
 from users.models import User, UserProfile
 from config.settings import SECRET_KEY
-from config.authentication import login_validate
+from config.authentication import login_validate, randstr
+
+from django.shortcuts import get_object_or_404
+from django.contrib.sites.shortcuts import get_current_site
+from django.template.loader import render_to_string
+from django.core.mail import EmailMessage
 
 
 class SignUpView(APIView):
@@ -44,12 +49,16 @@ class SignUpView(APIView):
 
             validate_email(email)
 
+            if nickname == "":
+                return Response({"message": "nickname을 입력하셔야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
             user_create = User(
                 user_type=user_type,
                 email=email,
                 password=password,
                 nickname=nickname
             )
+            print("여기")
             user_create.save()
 
         except ValidationError as e:
@@ -57,20 +66,56 @@ class SignUpView(APIView):
             return Response({"message": "유효하지 않은 email입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         except IntegrityError as e:
-            print(e)
-            return Response({"message": "이미 존재하는 email입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            if 'UNIQUE OF USER' in e.args[1]:
+                return Response({"message": "이미 존재하는 email입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            if 'nickname' in e.args[1]:
+                return Response({"message": "이미 존재하는 nickname입니다."}, status=status.HTTP_400_BAD_REQUEST)
 
         # 새로운 계정이 생성됨과 동시에 해당 계정의 프로필도 생성한다.
-        new_user_id = User.objects.get(nickname=nickname).id
-        new_profile = UserProfile(user_id=new_user_id)
+        new_user = User.objects.get(nickname=nickname)
+        new_user_id = new_user.id
+        new_profile = UserProfile(
+            user_id=new_user_id, name=randstr(45))  # 추후 이메일 인증을 위해 유저 프로필 이름에 랜덤값 삽입
         new_profile.save()
+
+        # 이메일 인증 준비
+        current_site = get_current_site(request)  # localhost:8000
+        message = render_to_string(
+            'users/user_active_email.html',
+            {
+                'domain': current_site.domain,
+                'activate_token': new_user.profile.name,
+            }
+        )
+
+        mail_subject = "[90Insta] 회원가입 인증 메일입니다."
+        user_email = new_user.email
+        email = EmailMessage(mail_subject, message, to=[user_email])
+        email.send()
 
         return Response({"message": "회원 가입 완료"}, status=status.HTTP_201_CREATED)
 
 
+class UserActiveView(APIView):
+    """ Email 인증 View """
+
+    def get(self, request, activate_token):
+        new_user_profile = get_object_or_404(UserProfile, name=activate_token)
+
+        new_user = User.objects.get(pk=new_user_profile.pk)
+
+        new_user.auth = True
+        new_user_profile.name = None
+
+        new_user.save()
+        new_user_profile.save()
+
+        return HttpResponse("이메일 인증이 완료됐습니다!!!")
+
+
 class SignInView(APIView):
 
-    """ 일반 회원 로그인"""
+    """ 일반 회원 로그인 View"""
     # ToDo: 추후에 이메일 인증 기능이 완성되면, 본 회원이 인증 완료(auth=True)인지 판단해야함
 
     def post(self, request):
@@ -91,6 +136,11 @@ class SignInView(APIView):
                 input_password.encode('utf-8'),
                 user.password
             )
+
+            user_auth = user.auth  # 인증 여부: 완료(True), 미완료(False)
+
+            if not user_auth:
+                return Response({"message": "이메일 인증을 완료해주시기 바랍니다."}, status=status.HTTP_400_BAD_REQUEST)
 
             if password_check:
 
@@ -150,6 +200,56 @@ class PasswordChangeView(APIView):
         return Response({"message": "password를 변경했습니다."}, status=status.HTTP_201_CREATED)
 
 
+class ProfileEditView(APIView):
+
+    """ 회원 프로필 변집 View """
+    @login_validate
+    def get(self, request):
+
+        image = request.user.profile.image  # class: ImageField
+        print(type(image))
+        name = request.user.profile.name
+        nickname = request.user.nickname
+        intro = request.user.profile.intro
+
+        data = {
+            "image": image.name,
+            "name": name,
+            "nickname": nickname,
+            "intro": intro,
+        }
+
+        return Response({"data": data}, status=status.HTTP_200_OK)
+
+    @login_validate
+    def post(self, request):
+
+        image = request.data['image']  # Inmemory Fiels
+        name = request.data['name']
+        nickname = request.data['nickname']
+        intro = request.data['intro']
+
+        if nickname == "":
+            return Response({"message": "nickname을 입력하셔야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user
+        user_profile = request.user.profile
+
+        try:
+            user.nickname = nickname
+            user_profile.image = image
+            user_profile.name = name
+            user_profile.intro = intro
+
+            user.save()
+            user_profile.save()
+
+        except IntegrityError as e:
+            return Response({"message": "이미 존재하는 nickname입니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"messaga": "프로필이 업데이트 됐습니다."}, status=status.HTTP_201_CREATED)
+
+
 class TestView(APIView):
 
     """ 테스트 용 View """
@@ -157,15 +257,22 @@ class TestView(APIView):
     @login_validate
     def post(self, request):
 
+        print(get_current_site(request))
+
+        encode_token = request.headers["Authorization"].split()[1]
+
+        payload = jwt.decode(encode_token, SECRET_KEY, algorithms='HS256')
+
         encode_token = request.headers["Authorization"].split()[1]
         payload = jwt.decode(encode_token, SECRET_KEY, algorithms='HS256')
 
         print(request)
         print(request.headers)
-        print(request.user)
+        print("로그인 유저 정보: ", request.user)
+        print("로그인 유저 프로필 정보: ", request.user.profile)
 
-        result = bcrypt.checkpw('01062189200'.encode(
+        result = bcrypt.checkpw('01028404144'.encode(
             "utf-8"), request.user.password)
         print(result)
         print(payload['exp'])
-        return Response({"message": "당신은 로그인 유저입니다."}, status=status.HTTP_200_OK)
+        return Response({"message": payload}, status=status.HTTP_200_OK)
