@@ -88,7 +88,8 @@ class SignUpView(APIView):
             }
         )
 
-        mail_subject = "[90Insta] 회원가입 인증 메일입니다."
+        # 가입 인증 이메일 전송
+        mail_subject = "[90Insta] 회원가입 인증 E-mail 입니다."
         user_email = new_user.email
         email = EmailMessage(mail_subject, message, to=[user_email])
         email.send()
@@ -198,6 +199,47 @@ class PasswordChangeView(APIView):
         user.save()
 
         return Response({"message": "password를 변경했습니다."}, status=status.HTTP_201_CREATED)
+
+
+class PasswordSearchView(APIView):
+
+    """ password 찾기 View """
+
+    def post(self, request):
+        # byte 타입의 request를 역직렬화 하여 dict로 만들어준다.
+        data = json.loads(request.body)
+        user_email = data["email"]
+
+        try:
+            user = User.objects.get(email=user_email)
+
+            # 6자리의 임의의 password(숫자, 영문 대소문자) 생성
+            new_password = randstr(6)
+
+            # 이메일 전송 준비
+            message = render_to_string(
+                'users/user_password_search.html',
+                {
+                    'nickname': user.nickname,
+                    'password': new_password,
+                }
+            )
+
+            # email로 새로 생성한 password 전송
+            mail_subject = "[90Insta] 새로 발급한 Password 입니다."
+            email = EmailMessage(mail_subject, message, to=[user_email])
+            email.send()
+
+            new_password_encode = bcrypt.hashpw(
+                new_password.encode('utf-8'), bcrypt.gensalt())
+
+            user.password = new_password_encode
+            user.save()
+
+        except User.DoesNotExist:
+            return Response({"message": "존재하지 않는 E-mail입니다."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        return Response({"message": "이메일로 새로운 password를 발급했습니다."}, status=status.HTTP_201_CREATED)
 
 
 class ProfileEditView(APIView):
