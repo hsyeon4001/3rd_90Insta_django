@@ -1,6 +1,4 @@
 from django.urls import path, include
-from django.conf import settings
-from django.conf.urls.static import static
 from rest_framework import routers
 from users.views import *
 
@@ -15,5 +13,3 @@ urlpatterns = [
     path('auth/<activate_token>', UserActiveView.as_view(), name="auth"),
     path('test/', TestView.as_view()),
 ]
-
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
