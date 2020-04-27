@@ -119,8 +119,8 @@ class UserActiveView(APIView):
         new_user.save()
         new_user_profile.save()
 
-#        return HttpResponse("이메일 인증이 완료됐습니다!!!")
-        return redirect('http://192.168.1.71/join_complete.html')
+        now_host = request.get_host().split(':')[0]
+        return redirect(f'http://{now_host}/join_complete.html')
 
 
 class SignInView(APIView):
@@ -202,7 +202,6 @@ class PasswordChangeView(APIView):
         user = request.user
         user_password = user.password  # 현재 로그인한 유저의 암호화된 비밀번호(bytes 타입)
 
-#        data = json.loads(request.body)
         data = request.data
 
         # 입력받은 세 가지 password의 길이 검사
@@ -300,6 +299,7 @@ class ProfileEditView(APIView):
             print(image)
             print(image.url)
             print(image.path)
+            print("현재 host: ", request.get_host())
             image_url = f"http://{request.get_host()}{image.url}"
         except ValueError:
             image_url = ""
@@ -323,8 +323,6 @@ class ProfileEditView(APIView):
     @login_validate
     def post(self, request):
 
-        print(request.POST)
-
         try:
             image = request.FILES['image']
         except:
@@ -333,16 +331,7 @@ class ProfileEditView(APIView):
         nickname = request.POST.get('nickname')
         intro = request.POST.get('intro')
 
-        # try:
-        #     image = request.data['image']  # Inmemory Fiels
-        # except:
-        #     image = ''
-        # name = request.data['name']
-        # nickname = request.data['nickname']
-        # intro = request.data['intro']
-
         print("image 타입: ", type(image))
-        # print(vars(image))
         print("image: ", image)
         print("name: ", name)
         print("nickname: ", nickname)
