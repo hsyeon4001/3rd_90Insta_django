@@ -17,7 +17,6 @@ def login_validate(func):
             return Response({"message": "로그인이 필요합니다."}, status=status.HTTP_401_UNAUTHORIZED)
 
         # {"Authorization" : "Bearer <JWT>"}
-#        encode_token = request.headers["Authorization"].split()[1]
         encode_token = request.headers["Authorization"]
 
         try:
